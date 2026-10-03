@@ -1,0 +1,82 @@
+
+'use strict';
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d'),$=s=>document.querySelector(s);
+let W,H,scale,faces=[],labels=[],keys={},last=0,time=0,socialClock=5,eventIndex=0,finished=false,won=false,confirmingSit=false;
+const player={name:'You · Pip',x:0,z:3,color:'#e9b779',angle:0};
+const furColors=[['Golden tabby','#e9b779'],['Cream','#eee4ce'],['Slate','#65777c'],['Ginger','#c48958'],['Chocolate','#765448'],['Lilac','#b2a1c9']];
+for(const [name,color] of furColors){const button=document.createElement('button');button.type='button';button.className='swatch';button.style.backgroundColor=color;button.title=name;button.setAttribute('aria-label',name);button.setAttribute('aria-pressed',String(player.color===color));button.onclick=()=>{player.color=color;$('#color-name').textContent=name;document.querySelectorAll('.swatch').forEach(swatch=>swatch.setAttribute('aria-pressed',String(swatch===button)));};$('#swatches').appendChild(button);}
+const cats=[{name:'Mochi',x:-4,z:-2,color:'#eee4ce',item:'Yarn',asked:false,done:false},{name:'Cleo',x:4,z:-2,color:'#65777c',item:'Fish',asked:false,done:false},{name:'Biscuit',x:3,z:3,color:'#c48958',item:'Catnip',asked:false,done:false}];
+const items=[{name:'Yarn',x:-5,z:3,color:'#d98799',held:false},{name:'Fish',x:5,z:0,color:'#91bfc1',held:false},{name:'Catnip',x:-2,z:-4,color:'#6e9b59',held:false}];
+function shuffled(values){const result=[...values];for(let j=result.length-1;j>0;j--){const k=Math.floor(Math.random()*(j+1));[result[j],result[k]]=[result[k],result[j]];}return result;}
+// Safe, separated supply spots avoid trees, the blanket, and starting characters.
+const supplySpots=[{x:-4,z:1,hint:'on the left side of the garden'},{x:-2.5,z:3.8,hint:'near the front-left fence'},{x:0,z:4.3,hint:'near the middle of the front fence'},{x:4.8,z:.3,hint:'on the right side of the garden'},{x:2,z:-4.3,hint:'near the back-right fence'},{x:-2,z:-4.3,hint:'near the back-left fence'}];
+function randomizeGame(){const spots=shuffled(supplySpots),requests=shuffled(items.map(i=>i.name));items.forEach((item,j)=>Object.assign(item,spots[j]));cats.forEach((cat,j)=>cat.item=requests[j]);}
+randomizeGame();
+const log=[],bubbles=[];let social=null;
+function resize(){W=innerWidth;H=innerHeight;canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);scale=Math.min(W/20,H/17,65)}addEventListener('resize',resize);resize();
+function project(x,y,z){return {x:W*.46+(x-z)*.7071*scale,y:H*.55+(x+z)*.4082*scale-y*.8165*scale}}
+function face(points,color,layer=4){faces.push({points,color,layer,depth:points.reduce((s,p)=>s+p[0]+p[2]+p[1],0)/points.length})}
+function box(x,y,z,w,h,d,c,layer=4){const a=[x-w/2,y,z-d/2],b=[x+w/2,y,z-d/2],e=[x-w/2,y,z+d/2],f=[x+w/2,y,z+d/2],up=p=>[p[0],p[1]+h,p[2]];face([up(a),up(b),up(f),up(e)],c[0],layer);face([b,f,up(f),up(b)],c[1],layer);face([e,f,up(f),up(e)],c[2],layer)}
+function cat(c){let bob=Math.sin(time*5+c.x)*.025;const y=c.seated?.12:.16+bob;box(c.x,0,c.z,.66,.18,.8,['#92a17c','#92a17c','#92a17c']);box(c.x,y,c.z,.55,.46,.8,[c.color,c.color,c.color]);box(c.x,y+.42,c.z+.27,.63,.48,.5,[c.color,c.color,c.color]);box(c.x-.23,y+.85,c.z+.27,.17,.23,.2,[c.color,c.color,'#d99794']);box(c.x+.23,y+.85,c.z+.27,.17,.23,.2,[c.color,c.color,'#d99794']);// Keep facial details in front of the whole head, including the far eye.
+function detail(x,h,w,height,color){let first=faces.length;box(x,h,c.z+.535,w,height,.035,[color,color,color]);for(let i=first;i<faces.length;i++)faces[i].depth=c.x+c.z+y+1.42;}
+for(const offset of [-.17,.17]){detail(c.x+offset,y+.63,.12,.14,'#fff8df');detail(c.x+offset,y+.65,.065,.09,'#283e36');detail(c.x+offset-.012,y+.71,.023,.025,'#ffffff');}
+detail(c.x,y+.52,.085,.065,'#b97378');box(c.x+.35,y+.22,c.z-.36,.16,.55,.16,[c.color,c.color,c.color]);labels.push({x:c.x,y:1.36,z:c.z,text:c.name,color:c===player?'#365c49':'#fff9ef'})}
+// Extruded silhouettes keep the supplies three-dimensional and recognizable.
+function silhouette(x,y,z,outline,thickness,colors){const back=outline.map(p=>[x+p[0],y+p[1],z-thickness/2]),front=outline.map(p=>[x+p[0],y+p[1],z+thickness/2]);face(back,colors[1]);for(let j=0;j<outline.length;j++){let k=(j+1)%outline.length;face([back[j],back[k],front[k],front[j]],colors[1]);}face(front,colors[0]);}
+function supply(i,y){if(i.name==='Fish'){
+silhouette(i.x,y,i.z,[[-.38,.19],[-.16,.04],[.17,.04],[.34,.18],[.17,.32],[-.16,.32]],.17,['#8cc5cb','#649fa9']);
+silhouette(i.x,y,i.z,[[-.3,.18],[-.57,.02],[-.57,.35]],.12,['#74b2bf','#548c9b']);
+silhouette(i.x,y,i.z,[[-.06,.3],[.05,.46],[.17,.3]],.10,['#6a9cae','#527e92']);
+let first=faces.length;box(i.x+.2,y+.2,i.z+.105,.065,.065,.022,['#253c43','#253c43','#253c43']);for(let j=first;j<faces.length;j++)faces[j].depth=i.x+i.z+y+1;
+}else if(i.name==='Catnip'){
+box(i.x,y,i.z,.045,.62,.045,['#62884d','#4f753d','#62884d']);
+for(let j=0;j<3;j++){let h=.13+j*.17;for(const side of [-1,1])silhouette(i.x,y+h,i.z+.035,[[0,0],[side*.17,-.025],[side*.32,.12],[side*.13,.16]],.045,['#80ad60','#567e43']);}
+silhouette(i.x,y+.52,i.z,[[0,0],[-.1,.13],[0,.25],[.1,.13]],.06,['#93bb70','#628b4d']);
+}else yarnBall(i,y);}
+function yarnBall(i,y){
+const radius=.29,cy=y+radius;
+const point=(latitude,longitude)=>[i.x+radius*Math.cos(latitude)*Math.cos(longitude),cy+radius*Math.sin(latitude),i.z+radius*Math.cos(latitude)*Math.sin(longitude)];
+// A rounded mesh with softly shaded facets forms the ball itself.
+for(let row=0;row<10;row++)for(let column=0;column<20;column++){
+let a=-Math.PI/2+row*Math.PI/10,b=a+Math.PI/10,t=column*Math.PI/10;
+let light=Math.round(62+row*2+Math.cos(t)*5);
+face([point(a,t),point(a,t+Math.PI/10),point(b,t+Math.PI/10),point(b,t)],`hsl(345, 43%, ${light}%)`);
+}
+// Narrow ribbons follow the spherical surface like wound strands of yarn.
+for(const angle of [.3,1.3,2.3])for(const offset of [-.15,-.075,0,.075,.15]){
+const strand=(t,k)=>{let r=Math.sqrt(.302*.302-k*k);return [i.x+r*Math.cos(t)*Math.cos(angle)-k*Math.sin(angle),cy+r*Math.sin(t),i.z+r*Math.cos(t)*Math.sin(angle)+k*Math.cos(angle)];};
+for(let step=0;step<48;step++){let t=step*Math.PI/24,next=t+Math.PI/24;face([strand(t,offset-.009),strand(next,offset-.009),strand(next,offset+.009),strand(t,offset+.009)],'#f4b5c6');}
+}
+// A loose thread curls away from the ball across its little display stand.
+const thread=[[-.18,.08],[-.31,.18],[-.43,.22],[-.49,.13],[-.43,.03],[-.3,-.02],[-.27,-.12],[-.37,-.18]];
+for(let j=0;j<thread.length-1;j++){let a=thread[j],b=thread[j+1],length=Math.hypot(b[0]-a[0],b[1]-a[1]),dx=-(b[1]-a[1])/length*.016,dz=(b[0]-a[0])/length*.016;face([[i.x+a[0]+dx,.115,i.z+a[1]+dz],[i.x+b[0]+dx,.115,i.z+b[1]+dz],[i.x+b[0]-dx,.115,i.z+b[1]-dz],[i.x+a[0]-dx,.115,i.z+a[1]-dz]],'#ce7899');}
+}
+function tree(x,z){box(x,0,z,.24,1.5,.24,['#ac8761','#96724f','#b78e63']);box(x,1.1,z,1.2,1.1,1.2,['#93af78','#68875c','#7f9d6b']);box(x,2,z,.8,.6,.8,['#a0ba83','#77955f','#8ba96e'])}
+function draw(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#f4eddc';ctx.fillRect(0,0,W,H);faces=[];labels=[];
+box(0,-.45,0,13,.4,12,['#b6c599','#829775','#97ac81'],0);for(let x=-6;x<=6;x++)for(let z=-5;z<=5;z++)if(Math.abs(x)<1||z===1)box(x,-.04,z,.96,.035,.96,['#dcd2b6','#c3b899','#d4c9aa'],1);
+// Draw the rear fence as a complete background object, before trees and cats.
+for(let i=-6;i<=6;i+=1.5){box(i,0,-5.7,.12,.7,.12,['#efdfbb','#d8c8a9','#e6d5b3'],3.5);box(i,0,5.7,.12,.7,.12,['#efdfbb','#d8c8a9','#e6d5b3'])}box(0,.42,-5.7,12.4,.11,.1,['#efdfbb','#d8c8a9','#e6d5b3'],3.5);box(0,.42,5.7,12.4,.11,.1,['#efdfbb','#d8c8a9','#e6d5b3']);
+tree(-5,-4);tree(5,-4);tree(-5,4.4);tree(5,4.6);
+box(0,.06,-2,2.5,.06,2,['#d7967c','#bf826c','#cb8d73'],2);for(let x=-1;x<=1;x+=.5)for(let z=-2.75;z<=-1.25;z+=.5)if(Math.round(x*2+z*2)%2===0)box(x,.121,z,.45,.008,.45,['#f4d5b4','#f4d5b4','#f4d5b4'],3);box(0,.13,-2,.55,.2,.45,['#c09a68','#ab8759','#b79260']);
+for(const i of items)if(!i.held){let y=.16+Math.sin(time*2)*.06;box(i.x,0,i.z,.7,.1,.7,['#e2d7b8','#c7bd9d','#d7cdaf']);supply(i,y);labels.push({x:i.x,y:.9,z:i.z,text:i.name,color:'#fff9ef'})}
+cats.forEach(cat);cat(player);faces.sort((a,b)=>a.layer-b.layer||a.depth-b.depth);for(const f of faces){ctx.beginPath();f.points.forEach((p,i)=>{let q=project(...p);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.closePath();ctx.fillStyle=f.color;ctx.fill()}
+for(const l of labels){let p=project(l.x,l.y,l.z);ctx.font='600 11px system-ui';let width=ctx.measureText(l.text).width+16;ctx.fillStyle=l.color;ctx.beginPath();ctx.roundRect(p.x-width/2,p.y-12,width,22,7);ctx.fill();ctx.fillStyle=l.color==='#365c49'?'white':'#365c49';ctx.textAlign='center';ctx.fillText(l.text,p.x,p.y+3)}
+for(const b of bubbles){let p=project(b.cat.x,2,b.cat.z);ctx.font='12px system-ui';let width=ctx.measureText(b.text).width+22;ctx.fillStyle='#fff9ef';ctx.beginPath();ctx.roundRect(p.x-width/2,p.y-16,width,28,9);ctx.fill();ctx.fillStyle='#365c49';ctx.fillText(b.text,p.x,p.y+2)}
+}
+function updateUI(){ $('#tasks').innerHTML=cats.map(c=>`<div class="task ${c.done?'done':''}">${c.done?'✓':'○'} ${c.name}: ${c.done?'ready for the picnic':c.asked?'bring '+c.item.toLowerCase():'say hello'}</div>`).join('');$('#log').textContent=log.slice(-3).join(' • ')}
+function say(who,words){confirmingSit=false;$('#confirm-sit').style.display='none';$('#speaker').textContent=who;$('#words').textContent=words;$('#dialog').style.display='block';keys={};$('#close').focus()}
+function close(){if(finished)return;confirmingSit=false;$('#confirm-sit').style.display='none';keys={}; $('#dialog').style.display='none';$('#interact').focus() }
+function distance(a,b){return Math.hypot(a.x-b.x,a.z-b.z)}
+function atBlanket(){return Math.abs(player.x)<=1.25&&Math.abs(player.z+2)<=1;}
+function confirmPicnic(){const missing=cats.filter(c=>!c.done);say('Ready to sit down?',missing.length?'Sitting down ends the game. You still need to finish tasks for '+missing.map(c=>c.name).join(', ')+'. If you sit now, you will lose. Are you sure you’re ready?':'All three tasks are complete! Sit down to finish the game and celebrate your win?');confirmingSit=true;$('#confirm-sit').style.display='inline-block';}
+function endGame(){won=cats.every(c=>c.done);finished=true;player.seated=true;player.x=.7;player.z=-1.6;keys={};const missing=cats.filter(c=>!c.done).map(c=>c.item.toLowerCase()).join(', ');say(won?'You win! Picnic purr-fection.':'You lose — the picnic started too soon.',won?'You sit down with all three supplies delivered. Everyone is ready to share the picnic. Great teamwork, Pip!':'You sat down before finishing every task. Still needed: '+missing+'. Try again and help all three neighbors before taking your seat.');$('#close').textContent='Play again';$('#dialog').style.borderColor=won?'#59845c':'#b97378';log.push(won?'Pip sits down. Picnic complete!':'Pip sits down before everyone is ready.');updateUI();}
+function interact(){if(finished)return;if($('#dialog').style.display==='block'){close();return}if(atBlanket()){confirmPicnic();return}let targets=[...cats,...items.filter(i=>!i.held)].sort((a,b)=>distance(player,a)-distance(player,b));let n=targets[0];if(n&&distance(player,n)<1.5){if(n.item){const item=items.find(i=>i.name===n.item);if(n.done)say(n.name,finished?'That was the best picnic. Thanks, Pip!':'Everything is ready! I’m heading to the blanket.');else if(n.asked&&item.held){n.done=true;log.push(`${n.name} is ready!`);say(n.name,{Yarn:'My yarn! Now we can all play together. Let’s meet at the picnic blanket.',Fish:'A fish to share! I’ll save a bite for everyone. Meet us at the blanket.',Catnip:'Fresh catnip! Everyone will love this. Time for our picnic.'}[n.item]);updateUI()}else{n.asked=true;say(n.name,({Mochi:'Hi Pip!',Cleo:'Hello, friend!',Biscuit:'Hey friend!'}[n.name])+' Could you bring '+({Yarn:'my pink yarn',Fish:'a little fish',Catnip:'some fresh green catnip'}[n.item])+' to our picnic? Look '+item.hint+'. Walk close and press E to pick it up, then bring it back to me.');updateUI()}}else{n.held=true;log.push(`Pip collected ${n.name.toLowerCase()}.`);say('Pip',`You picked up ${n.name.toLowerCase()}! Bring it to ${cats.find(c=>c.item===n.name).name}.`);updateUI()}}else $('#hint').textContent='Move closer to a cat or a supply, then press E.'}
+$('#confirm-sit').onclick=()=>{if(confirmingSit&&!finished)endGame();};$('#interact').onclick=interact;$('#close').onclick=()=>finished?location.reload():close();$('#reset').onclick=()=>location.reload();
+addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==='e'&&!e.repeat)interact();if(e.key==='Escape')close()});addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);addEventListener('blur',()=>keys={});document.querySelectorAll('[data-key]').forEach(b=>{b.onpointerdown=e=>{b.setPointerCapture(e.pointerId);keys[b.dataset.key]=true};b.onpointerup=b.onpointercancel=()=>keys[b.dataset.key]=false});
+function move(c,target,dt,speed){let d=distance(c,target);if(d>.05){c.x+=(target.x-c.x)/d*Math.min(d,speed*dt);c.z+=(target.z-c.z)/d*Math.min(d,speed*dt)}}
+function tick(now){let dt=Math.min((now-last)/1000,.05);last=now;time+=dt;if(!finished&&$('#dialog').style.display!=='block'){let sx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0),sy=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0);let len=Math.hypot(sx,sy);if(len){let dx=(sx+sy)/Math.SQRT2,dz=(sy-sx)/Math.SQRT2;player.x=Math.max(-5.7,Math.min(5.7,player.x+dx/len*dt*3));player.z=Math.max(-5,Math.min(5,player.z+dz/len*dt*3))}}
+socialClock-=dt;if(socialClock<=0&&!social){let a=cats[eventIndex%3],b=cats[(eventIndex+1)%3];social={a,b,target:{x:(a.x+b.x)/2,z:(a.z+b.z)/2},age:0};eventIndex++;socialClock=16}
+if(social){social.age+=dt;move(social.a,{x:social.target.x-.55,z:social.target.z},dt,.85);move(social.b,{x:social.target.x+.55,z:social.target.z},dt,.85);if(social.age>5&&!social.spoken){social.spoken=true;let line=won?'Best picnic ever!':social.a.done?'Let’s share at the picnic!':['Want to play?','You found a sunny spot!','Save me some catnip!'][(eventIndex-1)%3];bubbles.push({cat:social.a,text:line,until:time+3});log.push(`${social.a.name} → ${social.b.name}: ${line}`);updateUI()}if(social.age>8&&!social.replied){social.replied=true;bubbles.push({cat:social.b,text:won?'Purr-fect company.':'Of course, friend!',until:time+3});log.push(`${social.b.name} replies to ${social.a.name}.`);updateUI()}if(social.age>12)social=null}
+cats.forEach((c,i)=>{if(!social||social.a!==c&&social.b!==c){let target=c.done?{x:(i-1)*1.1,z:-2.5}:{x:[-3.8,3.5,2.8][i]+Math.sin(time*.15+i)*.7,z:[-1.8,-1.6,2.8][i]+Math.cos(time*.15+i)*.5};move(c,target,dt,.5)}});for(let i=bubbles.length-1;i>=0;i--)if(bubbles[i].until<time)bubbles.splice(i,1);
+let near=[...cats,...items.filter(i=>!i.held)].find(n=>distance(player,n)<1.5);$('#hint').textContent=finished?(won?'You win! Everyone is ready for the picnic.':'You lose. Play again to finish every task.'):atBlanket()?'Press E · Sit down and finish the game':near?`Press E · ${near.item?'Talk to '+near.name:'Collect '+near.name}`:cats.every(c=>c.done)?'Meet at the pink blanket and press E.':'Find your neighbors. Make a little magic.';draw();requestAnimationFrame(tick)}
+updateUI();requestAnimationFrame(tick);
